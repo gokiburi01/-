@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout Counter</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            color: #fff;
+            font-family: sans-serif;
+            text-align: center;
+        }
+        #video {
+            transform: scaleX(-1); /* ミラー表示 */
+            display: none;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            margin: 0 auto;
+        }
+        #warning {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 20px;
+            display: none;
+        }
+        #resetBtn {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 25px;
+            font-size: 20px;
+        }
+    </style>
+
+    <!-- MediaPipe Pose (Tasks API) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js"></script>
+
+</head>
+<body>
+
+    <div id="warning">全身が映っていません</div>
+
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <button id="resetBtn">リセット</button>
+
+    <script src="app.js"></script>
+</body>
+</html>

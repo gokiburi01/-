@@ -1,62 +1,75 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workout Counter</title>
-
-    <style>
-        body {
-            margin: 0;
-            background: #000;
-            color: #fff;
-            font-family: sans-serif;
-            text-align: center;
-        }
-        #video {
-            transform: scaleX(-1); /* ミラー表示 */
-            display: none;
-        }
-        canvas {
-            width: 100vw;
-            height: 100vh;
-            display: block;
-            margin: 0 auto;
-        }
-        #warning {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(255,0,0,0.7);
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 20px;
-            display: none;
-        }
-        #resetBtn {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 10px 25px;
-            font-size: 20px;
-        }
-    </style>
-
-    <!-- MediaPipe Pose (Tasks API) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js"></script>
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1d1d1d">
+  <meta name="description" content="からだを動かす。記憶が動き出す。MemoFitは、運動前後の記憶テストに取り組むトレーニングアプリです。">
+  <title>MemoFit — からだと、記憶のウォームアップ。</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <!-- AIライブラリは運動開始時に読み込み、UIの起動を待たせません。 -->
+  <script defer src="app.js"></script>
+  <script defer src="ui.js"></script>
 </head>
 <body>
-
-    <div id="warning">全身が映っていません</div>
-
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
-
-    <button id="resetBtn">リセット</button>
-
-    <script src="app.js"></script>
+  <header class="siteHeader" id="siteHeader">
+    <button class="wordmark" id="brandHome" aria-label="MemoFit ホームへ"><img src="assets/mark.svg" alt="" width="32" height="32">MemoFit<span class="brandDot"></span></button>
+    <div class="headerRight"><span class="edition">学校説明会バージョン<span>School Information Session Version</span></span><button class="motionToggle" id="motionToggle" aria-pressed="true" aria-label="アニメーションをオフにする">MOTION <span id="motionState">ON</span><i></i></button></div>
+  </header>
+  <main id="app">
+    <section id="homeScreen" class="screen homeScreen" aria-labelledby="homeTitle">
+      <div class="homeMain">
+        <div class="homeIdentity reveal"><div class="logoStage"><span class="orbit orbitOne"></span><span class="orbit orbitTwo"></span><img class="heroMark" src="assets/mark.svg" alt="MemoFit シンボル" width="300" height="290"><span class="orbitLabel">MOVE YOUR BODY.<br>WAKE YOUR MEMORY.</span></div><h1 id="homeTitle">MemoFit<span class="titleDot">.</span></h1><p class="homeTagline">からだと、記憶のウォームアップ。</p></div>
+        <div class="homeAction reveal"><div class="homeIntro"><span class="eyebrow">A LITTLE MOVEMENT. A NEW FOCUS.</span><p>からだを動かすと、<br>どれくらい覚えられる？</p><span class="muted">約5分の運動で、記憶の変化を見つけよう。</span></div><button id="beginBtn" class="slashBtn heroButton"><span><b>スタート</b><small>Start training</small></span><span class="buttonArrow" aria-hidden="true">↗</span></button><button id="viewRecordsBtn" class="textLink"><span>記録を見る<small>View records</small></span><span aria-hidden="true">↗</span></button></div>
+      </div>
+      <div class="homeFlow reveal"><span class="flowLabel">HOW IT WORKS</span><span><b>01</b> 記憶テスト</span><i>↗</i><span><b>02</b> トレーニング</span><i>↗</i><span><b>03</b> もう一度テスト</span><span class="flowEnd">ひとつずつ、気軽に。</span></div>
+    </section>
+    <section id="genderScreen" class="screen hidden" aria-labelledby="genderTitle">
+      <div class="pageContent"><div class="sectionHeading reveal"><span class="eyebrow">LET'S GET TO KNOW YOU / 01</span><h1 id="genderTitle">性別を教えてください。</h1><p>Please tell us your gender.</p></div>
+        <div class="genderChoices reveal" role="group" aria-label="性別を選択">
+          <button class="genderChoice" data-gender="male" aria-pressed="true"><span class="genderSymbol male">♂</span><span><b>男性</b> / Man</span><i class="choiceCheck">✓</i></button>
+          <button class="genderChoice" data-gender="female" aria-pressed="false"><span class="genderSymbol female">♀</span><span><b>女性</b> / Woman</span><i class="choiceCheck">✓</i></button>
+          <button class="genderChoice otherChoice" data-gender="other" aria-pressed="false"><span class="genderSymbol">—</span><span><b>その他・回答しない</b><small>Other / Prefer not to say</small></span><i class="choiceCheck">✓</i></button>
+        </div>
+        <select id="genderInput" class="srOnly" aria-label="選択した性別" tabindex="-1"><option value="male">男性</option><option value="female">女性</option><option value="other">その他</option></select>
+        <div class="pageActions reveal"><button class="slashBtn outlineBtn" data-go="homeScreen"><span><b>前へ戻る</b><small>Previous</small></span><span aria-hidden="true">↙</span></button><button class="slashBtn" data-go="ageScreen"><span><b>次へ進む</b><small>Next</small></span><span aria-hidden="true">↗</span></button></div>
+      </div>
+    </section>
+    <section id="ageScreen" class="screen hidden" aria-labelledby="ageTitle">
+      <div class="pageContent"><div class="sectionHeading reveal"><span class="eyebrow">LET'S GET TO KNOW YOU / 02</span><h1 id="ageTitle">年齢層を教えてください。</h1><p>Which age group are you in?</p></div>
+        <div class="agePicker reveal"><span class="pickerLabel">AGE GROUP</span><div class="ageControl"><button class="ageArrow" id="ageDown" aria-label="ひとつ前の年齢層">−</button><div class="ageValue" id="ageValue" aria-live="polite">10<span>〜</span>20<small>代</small></div><button class="ageArrow" id="ageUp" aria-label="ひとつ次の年齢層">＋</button></div><p class="muted">細かい年齢は入力しなくて大丈夫です。</p></div>
+        <select id="ageGroup" class="srOnly" aria-label="年齢層" tabindex="-1"><option value="10-20">10〜20代</option><option value="30-40">30〜40代</option><option value="50-60">50〜60代</option><option value="70-80">70〜80代</option><option value="90-100">90〜100代</option><option value="other">その他</option></select>
+        <div class="pageActions reveal"><button class="slashBtn outlineBtn" data-go="genderScreen"><span><b>前へ戻る</b><small>Previous</small></span><span aria-hidden="true">↙</span></button><button class="slashBtn" data-go="setupScreen"><span><b>次へ進む</b><small>Next</small></span><span aria-hidden="true">↗</span></button></div>
+      </div>
+    </section>
+    <section id="setupScreen" class="screen hidden" aria-labelledby="setupTitle">
+      <div class="pageContent setupContent"><div class="sectionHeading reveal"><span class="eyebrow">READY WHEN YOU ARE / 03</span><h1 id="setupTitle">準備は、いいですか？</h1><p>Let's warm up your memory.</p></div>
+        <div class="setupGrid reveal"><div class="testPreview"><span class="eyebrow">NUMBER MEMORY TEST</span><div class="previewDigits" aria-hidden="true"><span>1</span><span>2</span><span>3</span></div><h2>数字を覚えるテスト</h2><p>20桁の数字を15秒間で記憶して、<br>同じ順番で入力します。</p><span class="miniTag">運動の前と後に、1回ずつ。</span></div><div class="profileFields"><p class="fieldIntro">身体情報 <span>任意 / Optional</span></p><div class="formGroup"><label for="heightInput">身長 <span>Height</span></label><div class="unitInput"><input id="heightInput" type="number" min="50" max="250" step="0.1" placeholder="170" inputmode="decimal"><span>cm</span></div></div><div class="formGroup"><label for="weightInput">体重 <span>Weight</span></label><div class="unitInput"><input id="weightInput" type="number" min="10" max="300" step="0.1" placeholder="60" inputmode="decimal"><span>kg</span></div></div><p class="smallNote">周囲に十分なスペースを確保してください。<br>運動ではカメラを使用します。<br>入力内容と結果は、このブラウザに保存されます。</p></div></div>
+        <div class="pageActions reveal"><button class="slashBtn outlineBtn" data-go="ageScreen"><span><b>前へ戻る</b><small>Previous</small></span><span aria-hidden="true">↙</span></button><button id="startBtn" class="slashBtn"><span><b>テストを始める</b><small>Start memory test</small></span><span aria-hidden="true">↗</span></button></div>
+      </div>
+    </section>
+    <section id="countdownScreen" class="screen hidden" aria-labelledby="countdownTitle"><div class="countdownLayout"><div class="reveal"><span class="phaseTag" data-phase-label>BEFORE TRAINING</span><h1 id="countdownTitle">数字を覚える、<br>準備をしましょう。</h1><p class="muted">20 digits. 15 seconds. Let's focus.</p><p class="countdownHint">このあと、20桁の数字が表示されます。</p></div><div class="countdownDial reveal"><svg viewBox="0 0 200 200" aria-hidden="true"><circle class="ringTrack" cx="100" cy="100" r="92"/><circle id="countdownRing" class="ringProgress" cx="100" cy="100" r="92"/></svg><div id="countdownNumber" class="countdownNumber" role="timer">10</div><span>GET READY</span></div></div></section>
+    <section id="memoryScreen" class="screen hidden" aria-labelledby="memoryTitle"><div class="testContent"><div class="testTop reveal"><span class="phaseTag" data-phase-label>BEFORE TRAINING</span><div class="testTimer"><span>残り</span><strong id="memoryTimer" role="timer">15</strong><span>秒</span></div></div><div id="memoryDigits" class="memoryDigits" aria-label="記憶する20桁の数字"></div><div class="memoryBottom reveal"><div><h1 id="memoryTitle">表示されている数字を覚えてください。</h1><p>Please remember the numbers shown.</p></div><span class="testLength">20 DIGITS / 15 SEC</span></div><div class="memoryProgress"><span id="memoryProgressFill"></span></div></div></section>
+    <section id="answerScreen" class="screen hidden" aria-labelledby="answerTitle"><div class="testContent"><div class="testTop reveal"><span class="phaseTag" data-phase-label>BEFORE TRAINING</span><span class="answerCounter"><b id="answerLength">0</b> / 20 DIGITS</span></div><label for="memoryAnswerInput" class="answerGridLabel"><span id="answerSlots" class="answerSlots" aria-hidden="true"></span><span class="srOnly">覚えている20桁の数字を順番に入力</span></label><input id="memoryAnswerInput" class="memoryAnswerInput" type="text" maxlength="20" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-describedby="answerHint"><div class="memoryBottom reveal"><div><h1 id="answerTitle">覚えている数字を入力してください。</h1><p id="answerHint">Enter the numbers you remember, in order.</p></div></div><div class="answerButtons reveal"><button id="giveUpBtn" class="textLink smallLink"><span>今回はスキップ<small>Skip this test</small></span><span aria-hidden="true">↗</span></button><button id="submitAnswer" class="slashBtn"><span><b>回答する</b><small>Submit answer</small></span><span aria-hidden="true">↗</span></button></div></div></section>
+    <section id="beforeMemoryResultScreen" class="screen hidden" aria-labelledby="beforeTitle"><div class="beforeResult"><div class="scoreBlock reveal"><span class="phaseTag">BEFORE TRAINING</span><h1 id="beforeTitle">いまの記憶を、チェック。</h1><div class="bigScore"><span id="beforeRate">0</span><small>%</small></div><p class="scoreCaption">スコア<span>Score</span></p><p class="correctCaption">正解数 <b id="beforeCorrect">0 / 20</b></p></div><div class="nextTraining reveal"><span class="eyebrow">NEXT / MOVE YOUR BODY</span><h2>それでは、トレーニングを<br>始めましょう。</h2><p>グーパー運動・もも上げ・スクワット・ジャンプ。<br>4つの運動を、自分のペースで。</p><div class="exerciseMiniList"><span>01 <b>グーパー</b></span><span>02 <b>もも上げ</b></span><span>03 <b>スクワット</b></span><span>04 <b>ジャンプ</b></span></div><button id="startTrainingBtn" class="slashBtn"><span><b>運動を始める</b><small>Start training / 約5分</small></span><span aria-hidden="true">↗</span></button><p class="smallNote">カメラの使用を許可して、全身が映る位置へ。</p></div></div></section>
+    <section id="loadingScreen" class="screen hidden darkScreen" aria-labelledby="loadingTitle"><div class="loadingContent"><div class="mascot mascotLoading" data-mascot aria-hidden="true"></div><span class="eyebrow">LET'S GET MOVING</span><h1 id="loadingTitle">からだの準備も、<br>整えましょう。</h1><p id="loadingText" role="status" aria-live="polite">カメラを準備しています…</p><div class="loadingTrack"><span></span></div><p class="smallNote">全身が映る位置で、少し離れてお待ちください。</p><button id="cancelLoadingBtn" class="darkTextBtn">準備を中止して戻る ↙</button></div></section>
+    <section id="trainingScreen" class="screen hidden trainingScreen" aria-label="運動トレーニング">
+      <video id="video" autoplay playsinline muted></video><canvas id="canvas"></canvas><div class="cameraShade"></div>
+      <div class="trainingHud"><div class="repDisplay"><span class="hudLabel">REPETITIONS</span><div><b id="currentReps">0</b><span>/ 15</span></div></div><div id="exercisePanel"><span class="hudLabel">NOW TRAINING</span><h1 id="exerciseName">グーパー運動</h1><p id="exerciseEnglish">Hand grip</p></div><div class="calDisplay"><span class="hudLabel">ENERGY</span><div><b id="kcal">0.0</b><span>kcal</span></div></div></div>
+      <div id="warning" class="warning" role="status" aria-live="polite"></div>
+      <div class="trainingGuide"><div class="mascot mascotGuide" id="trainingMascot" data-mascot aria-hidden="true"></div><div class="guideCopy"><span class="hudLabel">YOUR PACE. YOUR TRAINING.</span><p id="exerciseTarget">握ってください</p><div id="exerciseGoal" class="exerciseGoal" aria-live="polite">目標 15回</div></div></div>
+      <div class="trainingSide"><div class="setTimer"><span>このセット</span><div><b id="setSeconds">40</b><small>秒</small></div><div class="setTimeTrack"><i id="setTimeFill"></i></div></div><div class="statsPanel"><span>スクワット <b id="sq">0</b></span><span>ジャンプ <b id="jp">0</b></span></div><div class="fpsPanel">LIVE <i></i> <span id="fpsValue">0</span> FPS</div></div>
+      <div class="trainingBottom"><div id="trainingProgress"><span class="hudLabel">SESSION PROGRESS</span><b id="progressText">1 / 7 セット</b><div class="setDots" id="setDots"></div></div><div class="trainingControls"><button id="resetBtn">最初に戻る ↙</button><button id="endTrainingBtn">運動を終了する ↗</button></div></div>
+      <p id="safetyMessage" class="safetyMessage">周囲に人や障害物がないことを確認してください。</p><div id="excellentBadge" class="excellentBadge" style="display:none">EXCELLENT<span>いい調子、そのまま！</span></div><div id="celebration" class="celebration" aria-hidden="true"></div>
+      <div id="exerciseIntro" class="exerciseIntro hidden"><div class="introExercise"><span class="eyebrow">NEXT EXERCISE</span><h2 id="introExerciseName">グーパー運動</h2><p id="introExerciseEnglish">Hand grip</p></div><b id="exerciseIntroNumber">3</b><p>無理のないペースで、始めよう。</p></div>
+    </section>
+    <section id="resultScreen" class="screen hidden" aria-labelledby="resultTitle"><div class="resultContent"><div class="sectionHeading reveal"><span class="eyebrow">SESSION COMPLETE</span><h1 id="resultTitle">おつかれさまでした。</h1><p>One little session. A new discovery.</p></div><div class="resultMain reveal"><div class="resultComparison"><div><span class="eyebrow">BEFORE / 運動前</span><strong id="beforeRateResult">0%</strong><span id="beforeCorrectResult">0 / 20</span><div class="scoreBar"><i id="beforeBar"></i></div></div><span class="comparisonArrow" aria-hidden="true">↗</span><div><span class="eyebrow">AFTER / 運動後</span><strong id="afterRateResult">0%</strong><span id="afterCorrectResult">0 / 20</span><div class="scoreBar"><i id="afterBar"></i></div></div></div><div class="improvementBlock"><span class="eyebrow">SCORE CHANGE</span><strong id="improveRate">+0</strong><span>ポイントの変化</span><p>今回の正答率の差です。</p></div></div><div class="resultStats reveal"><div><span>スクワット</span><b id="resultSquat">0回</b></div><div><span>ジャンプ</span><b id="resultJump">0回</b></div><div><span>推定消費カロリー</span><b id="resultKcal">0.0 kcal</b></div></div><div class="resultFooter reveal"><p id="recordStatus" class="smallNote" role="status"></p><div class="resultButtons"><button id="resultRecordsBtn" class="slashBtn outlineBtn"><span><b>記録を見る</b><small>View records</small></span><span aria-hidden="true">↗</span></button><button id="restartBtn" class="slashBtn"><span><b>もう一度試す</b><small>Try again</small></span><span aria-hidden="true">↗</span></button></div></div></div></section>
+    <section id="recordsScreen" class="screen hidden" aria-labelledby="recordsTitle"><div class="recordsContent"><div class="sectionHeading reveal"><span class="eyebrow">YOUR LITTLE DISCOVERIES</span><h1 id="recordsTitle">これまでの記録。</h1><p>Your training records.</p></div><div id="recordsList" class="recordsList reveal"></div><div class="recordsActions reveal"><button class="slashBtn outlineBtn" data-go="homeScreen"><span><b>ホームへ戻る</b><small>Back to home</small></span><span aria-hidden="true">↙</span></button><button id="exportRecordsBtn" class="slashBtn"><span><b>CSVを書き出す</b><small>Export records</small></span><span aria-hidden="true">↗</span></button></div><p class="smallNote reveal" id="recordsNote">記録は、この端末のこのブラウザに保存されます。</p></div></section>
+  </main>
+  <footer class="siteFooter" id="siteFooter"><span id="pageIndex">01</span><span id="footerCaption">MOVE. REMEMBER. REPEAT.</span><span class="footerBrand">MemoFit / BODY × MEMORY</span></footer>
+  <div class="transitionCurtain" id="transitionCurtain" aria-hidden="true"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><p>このアプリを使うにはJavaScriptを有効にしてください。</p></noscript>
 </body>
 </html>

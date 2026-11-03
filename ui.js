@@ -5,7 +5,11 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const STORAGE_KEY = 'memofit.records.v1';
   const MOTION_KEY = 'memofit.motion.v1';
-  const english = { grip: 'Hand grip', highKnee: 'High knees', squat: 'Squat', jump: 'Jump' };
+  const SETTINGS_KEY = 'memofit.settings.v1';
+  const preferenceFields = { duration: 'courseDuration', restMode: 'restMode', memoryMode: 'memoryMode', timerPlacement: 'timerPlacement', metricDisplay: 'metricDisplay' };
+  const preferenceChoices = { duration: ['3', '5'], restMode: ['normal', 'rest'], memoryMode: ['same', 'random'], timerPlacement: ['top', 'side'], metricDisplay: ['both', 'time', 'calories'] };
+  const preferences = { duration: '5', restMode: 'normal', memoryMode: 'same', timerPlacement: 'top', metricDisplay: 'both' };
+  const english = { grip: 'Hand grip', highKnee: 'High knees', squat: 'Squat', jump: 'Jump', rest: 'Rest' };
   const pageMeta = {
     homeScreen: ['01', 'MOVE. REMEMBER. REPEAT.'],
     genderScreen: ['02', 'YOUR PROFILE / GENDER'],
@@ -31,6 +35,11 @@
   let inputWasComposing = false;
   try {
     motionPreference = localStorage.getItem(MOTION_KEY);
+    let savedSettings = {};
+    try { savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { /* Ignore damaged preferences; keep reading existing records. */ }
+    for (const key of Object.keys(preferences)) {
+      if (preferenceChoices[key].includes(savedSettings?.[key])) preferences[key] = savedSettings[key];
+    }
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
     if (Array.isArray(stored)) records = stored.filter(validRecord).slice(0, 100);
   } catch { storageAvailable = false; }
@@ -117,12 +126,14 @@
       $('countdownRing').style.strokeDashoffset = '0';
     }
     if (screen === answerScreen) renderAnswer();
-    if (screen === beforeMemoryResultScreen) numberTo(beforeRate, beforeScore);
+    if (screen === setupScreen) renderCoursePreview();
+    if (screen === beforeMemoryResultScreen) { numberTo(beforeRate, beforeScore); renderActiveMenu(); }
     if (screen === loadingScreen) {
       $('cancelLoadingBtn').textContent = '準備を中止して戻る ↙';
       $('loadingScreen').classList.remove('loadFailed');
     }
     if (screen === resultScreen) {
+      $('resultSessionSummary').textContent = sessionLabel(sessionSettings) + ' / 数字：' + (sessionSettings.memoryMode === 'same' ? '前後で同じ' : '前後で別々にランダム');
       numberTo(beforeRateResult, beforeScore, { suffix: '%' });
       numberTo(afterRateResult, afterScore, { suffix: '%' });
       numberTo(improveRate, improveScore, { prefix: improveScore >= 0 ? '+' : '' });
@@ -161,9 +172,7 @@
       $('ageValue').style.fontSize = 'clamp(35px, 6vw, 70px)';
     } else {
       $('ageValue').style.fontSize = '';
-      const [from, to] = value.split('-');
-      $('ageValue').append(document.createTextNode(from));
-      const dash = document.createElement('span'); dash.textContent = '〜'; $('ageValue').append(dash, document.createTextNode(to));
+      $('ageValue').append(document.createTextNode(value.replace(/代$/, '')));
       const unit = document.createElement('small'); unit.textContent = '代'; $('ageValue').append(unit);
     }
     $('ageDown').disabled = next === 0; $('ageUp').disabled = next === ageGroupInput.options.length - 1;
@@ -172,6 +181,68 @@
   $('ageDown').addEventListener('click', () => changeAge(-1));
   $('ageUp').addEventListener('click', () => changeAge(1));
   changeAge(0);
+
+  function sessionLabel(settings) {
+    return settings.duration + '分・' + (settings.restMode === 'rest' ? '休憩ありコース' : '通常コース');
+  }
+  function renderPlan(container, plan, tagName) {
+    container.replaceChildren();
+    plan.forEach((exercise, index) => {
+      const item = document.createElement(tagName);
+      const number = document.createElement('span'); number.textContent = String(index + 1).padStart(2, '0');
+      const name = document.createElement('b'); name.textContent = exercise.name;
+      item.append(number, name);
+      if (exercise.restAfterGoal) {
+        const note = document.createElement('small'); note.textContent = '8回 → 残り休憩'; item.append(note);
+      } else if (exercise.type === 'rest') {
+        const note = document.createElement('small'); note.textContent = '40秒'; item.append(note);
+      }
+      container.append(item);
+    });
+  }
+  function renderCoursePreview() {
+    const settings = readSessionSettings();
+    const plan = createTrainingPlan(settings);
+    $('courseSummary').textContent = sessionLabel(settings) + ' / 全' + plan.length + 'セット';
+    renderPlan($('coursePreviewList'), plan, 'li');
+    $('courseRule').textContent = settings.restMode === 'rest'
+      ? 'ジャンプは各セット8回。達成したらそのセットの残り時間は休憩します。'
+      : '各運動の目標は1セット15回。達成後も自分のペースで続けられます。';
+  }
+  function renderActiveMenu() {
+    renderPlan($('exerciseMiniList'), exercises, 'span');
+    $('startTrainingDetail').textContent = 'Start training / ' + sessionLabel(sessionSettings);
+  }
+  function savePreferences() {
+    for (const [key, id] of Object.entries(preferenceFields)) preferences[key] = $(id).value;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(preferences)); } catch { /* Session choices still work. */ }
+    renderCoursePreview(); applyMetricLayout();
+  }
+  function applyMetricLayout() {
+    const top = preferences.timerPlacement === 'top';
+    const slot = $(top ? 'timerTopSlot' : 'timerSideSlot');
+    if ($('setTimer').parentElement !== slot) slot.append($('setTimer'));
+    $('setTimer').classList.toggle('hidden', preferences.metricDisplay === 'calories');
+    $('timerTopSlot').classList.toggle('hidden', !top || preferences.metricDisplay === 'calories');
+    $('timerSideSlot').classList.toggle('hidden', top || preferences.metricDisplay === 'calories');
+    $('calorieMetric').classList.toggle('hidden', preferences.metricDisplay === 'time');
+    trainingScreen.dataset.timerPlacement = preferences.timerPlacement;
+    trainingScreen.dataset.metricDisplay = preferences.metricDisplay;
+    const labels = { both: '秒数＋kcal', time: '秒数のみ', calories: 'kcalのみ' };
+    $('metricToggleBtn').textContent = '表示：' + labels[preferences.metricDisplay];
+    $('timerPositionBtn').textContent = '秒数：' + (top ? '上部' : '右下') + ' ↔';
+  }
+  for (const [key, id] of Object.entries(preferenceFields)) {
+    $(id).value = preferences[key]; $(id).addEventListener('change', savePreferences);
+  }
+  $('metricToggleBtn').addEventListener('click', () => {
+    const modes = preferenceChoices.metricDisplay;
+    $('metricDisplay').value = modes[(modes.indexOf(preferences.metricDisplay) + 1) % modes.length]; savePreferences();
+  });
+  $('timerPositionBtn').addEventListener('click', () => {
+    $('timerPlacement').value = preferences.timerPlacement === 'top' ? 'side' : 'top'; savePreferences();
+  });
+  renderCoursePreview(); applyMetricLayout();
 
   function renderDigits(digits) {
     memoryDigits.replaceChildren();
@@ -252,9 +323,20 @@
     $('exerciseEnglish').textContent = english[exercise.type];
     $('trainingMascot').dataset.exercise = exercise.type;
     lastCount = -1; lastAchieved = false;
-    showWarning('');
-    excellentBadge.style.display = 'none';
+    trainingScreen.classList.toggle('resting', exercise.type === 'rest');
+    const speech = $('robotSpeech');
+    speech.classList.toggle('hidden', exercise.type !== 'grip' && exercise.type !== 'rest');
+    speech.textContent = exercise.type === 'rest' ? 'ゆっくり、ひと休み。' : '自分のペースで！';
+    showWarning(''); excellentBadge.style.display = 'none';
     trainingTick(); updateLive();
+  }
+  function restStarted() {
+    trainingScreen.classList.add('resting');
+    exerciseName.textContent = '休憩'; $('exerciseEnglish').textContent = 'Rest / Jump complete';
+    $('trainingMascot').dataset.exercise = 'rest';
+    $('robotSpeech').textContent = '8回クリア！ひと休みしよう。';
+    $('robotSpeech').classList.remove('hidden');
+    showWarning('');
   }
   function trainingTick() {
     $('setSeconds').textContent = Math.max(0, remainExerciseTime);
@@ -270,13 +352,15 @@
   }
   function updateLive() {
     if (currentScreen !== trainingScreen) return;
-    const count = currentExerciseCount();
+    const exercise = activeExercise(), count = currentExerciseCount(), goal = currentGoal();
+    $('currentGoal').textContent = goal;
+    trainingScreen.querySelector('.repGoal').classList.toggle('hidden', exercise.type === 'rest');
     if (count !== lastCount) {
-      $('currentReps').textContent = count;
+      $('currentReps').textContent = exercise.type === 'rest' ? '—' : count;
       if (count > lastCount && lastCount >= 0) tick($('currentReps'));
       lastCount = count;
     }
-    if (count >= GOAL_REPS && !lastAchieved) { lastAchieved = true; excellent(); celebrate(); }
+    if (exercise.type !== 'rest' && count >= goal && !lastAchieved) { lastAchieved = true; excellent(); celebrate(); }
   }
   function excellent() {
     clearTimeout(excellentTimer);
@@ -318,7 +402,9 @@
       squat: squatCount, jump: jumpCount, grip: gripCount, highKnee: highKneeCount,
       kcal: Number(calorie.toFixed(1)), duration: elapsedTraining,
       gender: genderInput.value, ageGroup: ageGroupInput.value,
-      height: optionalNumber(heightInput), weight: optionalNumber(weightInput)
+      height: optionalNumber(heightInput), weight: optionalNumber(weightInput),
+      courseMinutes: Number(sessionSettings.duration), courseMode: sessionSettings.restMode,
+      memoryMode: sessionSettings.memoryMode, sets: TOTAL_EXERCISES
     };
     records.unshift(row); records = records.slice(0, 100);
     try {
@@ -347,7 +433,12 @@
       dateCell.textContent = date.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
       const time = document.createElement('small');
       time.textContent = `${date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} / ${Math.floor(row.duration / 60)}分${row.duration % 60}秒`;
-      dateCell.append(time); line.append(dateCell);
+      dateCell.append(time);
+      if (row.courseMinutes) {
+        const course = document.createElement('small'); course.textContent = row.courseMinutes + '分 / ' + (row.courseMode === 'rest' ? '休憩あり' : '通常');
+        dateCell.append(course);
+      }
+      line.append(dateCell);
       for (const [label, value] of [['BEFORE / 運動前', row.before], ['AFTER / 運動後', row.after]]) {
         const cell = document.createElement('div'); cell.className = 'recordScore';
         const title = document.createElement('span'); title.textContent = label;
@@ -363,9 +454,9 @@
   }
   $('exportRecordsBtn').addEventListener('click', () => {
     if (!records.length) return;
-    const headers = ['日時', '運動前正解数', '運動後正解数', '運動前正答率(%)', '運動後正答率(%)', '正答率の差(pt)', '運動時間(秒)', 'グーパー回数', 'もも上げ回数', 'スクワット回数', 'ジャンプ回数', '推定消費kcal', '性別', '年齢層', '身長(cm)', '体重(kg)'];
+    const headers = ['日時', '運動前正解数', '運動後正解数', '運動前正答率(%)', '運動後正答率(%)', '正答率の差(pt)', '運動時間(秒)', 'グーパー回数', 'もも上げ回数', 'スクワット回数', 'ジャンプ回数', '推定消費kcal', '性別', '年齢層', '身長(cm)', '体重(kg)', 'コース(分)', '休憩設定', '数字の設定', 'セット数'];
     const quote = value => '"' + String(value ?? '').replace(/"/g, '""') + '"';
-    const rows = records.map(row => [row.date, row.beforeCorrect, row.afterCorrect, row.before, row.after, row.after - row.before, row.duration, row.grip, row.highKnee, row.squat, row.jump, row.kcal, row.gender, row.ageGroup, row.height, row.weight]);
+    const rows = records.map(row => [row.date, row.beforeCorrect, row.afterCorrect, row.before, row.after, row.after - row.before, row.duration, row.grip, row.highKnee, row.squat, row.jump, row.kcal, row.gender, row.ageGroup, row.height, row.weight, row.courseMinutes ?? '', row.courseMode === 'rest' ? '休憩あり' : (row.courseMode === 'normal' ? '通常' : ''), row.memoryMode === 'same' ? '前後で同じ' : (row.memoryMode === 'random' ? '前後で別々にランダム' : ''), row.sets ?? '']);
     const csv = '\uFEFF' + [headers, ...rows].map(row => row.map(quote).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = 'MemoFit-records.csv';
@@ -385,6 +476,6 @@
   // The SVG is embedded so it also works when index.html is opened from a file.
   const mascotSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 280"><ellipse class="mascotShadow" cx="130" cy="259" rx="71" ry="10" fill="#000" opacity=".18"/><g class="mascotLegs" fill="#dddcd8"><rect class="legLeft" x="85" y="219" width="31" height="33" rx="13"/><rect class="legRight" x="144" y="219" width="31" height="33" rx="13"/></g><g class="mascotBody"><path d="M97 186h66l10 39q-4 18-19 18h-48q-15 0-19-18Z" fill="#eae9e5"/><rect x="94" y="192" width="72" height="23" rx="7" fill="#272727"/><g class="mascotArm armLeft"><path d="m86 181-33 23" stroke="#3b3b39" stroke-width="14" stroke-linecap="round"/><circle cx="46" cy="210" r="21" fill="#eae9e5"/></g><g class="mascotArm armRight"><path d="m174 181 32 12" stroke="#3b3b39" stroke-width="14" stroke-linecap="round"/><circle cx="213" cy="190" r="21" fill="#eae9e5"/></g><g class="mascotHead"><circle cx="130" cy="43" r="24" fill="#d5d5d0"/><rect x="27" y="104" width="34" height="56" rx="12" fill="#d5d5d0"/><rect x="199" y="104" width="34" height="56" rx="12" fill="#d5d5d0"/><path d="M130 38c57 0 92 48 92 108 0 45-37 62-92 62s-92-17-92-62c0-60 35-108 92-108Z" fill="#eae9e5"/><path d="M130 61c42 0 70 39 70 84 0 29-28 41-70 41s-70-12-70-41c0-45 28-84 70-84Z" fill="#232323"/><g class="mascotEyes" stroke="#eae9e5" fill="none" stroke-width="4" stroke-linecap="round"><path d="M91 117q14 1 19 14-14-5-25 0m84-14q-14 1-19 14 14-5 25 0"/></g><path d="M119 139h22q2 25-11 25t-11-25Z" fill="#eae9e5"/></g></g></svg>`;
   document.querySelectorAll('[data-mascot]').forEach(container => { container.innerHTML = mascotSVG; });
-  window.MemoUI = { screenChanged, renderDigits, countdownTick, memoryTick, introduceExercise, cancelIntro, exerciseChanged, trainingTick, updateLive, excellent, loadingFailed, saveResult };
+  window.MemoUI = { screenChanged, renderDigits, countdownTick, memoryTick, introduceExercise, cancelIntro, exerciseChanged, restStarted, trainingTick, updateLive, excellent, loadingFailed, saveResult };
   showScreen($('homeScreen'));
 })();

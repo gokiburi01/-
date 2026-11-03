@@ -1,6 +1,6 @@
 const INTRO_COUNTDOWN = 10, MEMORY_TIME = 15, MEMORY_LENGTH = 20;
-// 各運動は40秒のままにし、合計トレーニング時間を5分(300秒)に調整する
-const EXERCISE_TIME = 40, TOTAL_TRAINING_TIME = 300, GOAL_REPS = 15, SCORE_THRESHOLD = 0.3;
+// 各セットは40秒。3分コースは4セット、5分コースは7セット。
+const EXERCISE_TIME = 40, GOAL_REPS = 15, SCORE_THRESHOLD = 0.3;
 // 描画・姿勢推定は端末性能によらず最大30fpsにそろえる。手の推定は十分な判定精度を
 // 保てる12.5fpsに限定し、グーパー運動だけが重くなるのを防ぐ。
 const TARGET_FPS = 30, FRAME_INTERVAL = 1000 / TARGET_FPS, HAND_INTERVAL = 80;
@@ -22,23 +22,46 @@ const beforeCorrectResult = $("beforeCorrectResult"), beforeRateResult = $("befo
 const afterCorrectResult = $("afterCorrectResult"), afterRateResult = $("afterRateResult"), improveRate = $("improveRate");
 const resultSquat = $("resultSquat"), resultJump = $("resultJump"), resultKcal = $("resultKcal"), restartBtn = $("restartBtn");
 
-const exercises = [
-    { name: "グーパー運動", type: "grip" }, { name: "もも上げ", type: "highKnee" },
-    { name: "スクワット", type: "squat" }, { name: "ジャンプ", type: "jump" }
-];
+const DEFAULT_SETTINGS = Object.freeze({ duration: "5", restMode: "normal", memoryMode: "same" });
+const EXERCISE_CATALOG = {
+    grip: { name: "グーパー運動", type: "grip" }, highKnee: { name: "もも上げ", type: "highKnee" },
+    squat: { name: "スクワット", type: "squat" }, jump: { name: "ジャンプ", type: "jump" },
+    rest: { name: "休憩", type: "rest" }
+};
+function createTrainingPlan(settings) {
+    const types = ["grip", "highKnee", "squat", "jump"];
+    if (settings.duration === "5") {
+        types.push(...(settings.restMode === "rest" ? ["grip", "rest", "jump"] : ["grip", "highKnee", "squat"]));
+    }
+    return types.map((type) => ({
+        ...EXERCISE_CATALOG[type],
+        goal: type === "rest" ? 0 : (type === "jump" && settings.restMode === "rest" ? 8 : GOAL_REPS),
+        restAfterGoal: type === "jump" && settings.restMode === "rest"
+    }));
+}
+function readSessionSettings() {
+    return Object.freeze({
+        duration: $("courseDuration")?.value === "3" ? "3" : "5",
+        restMode: $("restMode")?.value === "rest" ? "rest" : "normal",
+        memoryMode: $("memoryMode")?.value === "random" ? "random" : "same"
+    });
+}
+let sessionSettings = DEFAULT_SETTINGS;
+let exercises = createTrainingPlan(sessionSettings);
 const skeleton = [[5,7],[7,9],[6,8],[8,10],[5,6],[5,11],[6,12],[11,12],[11,13],[13,15],[12,14],[14,16]];
-let phase = "before", randomDigits = "";
+let phase = "before", randomDigits = "", beforeMemoryDigits = "";
 let beforeCorrectCount = 0, afterCorrectCount = 0, beforeScore = 0, afterScore = 0, improveScore = 0;
 let detector = null, handDetector = null, cameraStream = null, running = false;
 let gripCount = 0, highKneeCount = 0, squatCount = 0, jumpCount = 0, calorie = 0, currentExercise = 0, completedExercises = 0, remainExerciseTime = EXERCISE_TIME;
 let squatState = "UP", kneeState = false, jumpCooldown = 0, prevHipY = null;
 let handLandmarks = [], handDetectionPending = false, lastHandDetectionAt = 0, handResultVersion = 0, processedHandResultVersion = 0, gripPhase = "closed", gripPhaseEndsAt = 0, gripPhaseValidated = false, gripStableFrames = 0;
 let countdownTimer = null, memoryTimerId = null, trainingTimer = null, animationId = null, fpsFrame = 0, lastFpsTime = performance.now(), lastInferenceAt = 0;
-// トレーニング時間管理
-const FULL_EXERCISES = Math.floor(TOTAL_TRAINING_TIME / EXERCISE_TIME);
-const LAST_EXERCISE_DURATION = TOTAL_TRAINING_TIME - FULL_EXERCISES * EXERCISE_TIME; // 余り秒数（0なら無し）
-// 上限を7セットに制限（ユーザーの指定）
-let TOTAL_EXERCISES = Math.min(7, FULL_EXERCISES + (LAST_EXERCISE_DURATION > 0 ? 1 : 0));
+// メニューと目標はセッション開始時の設定で固定します。
+let TOTAL_EXERCISES = exercises.length;
+let setCountStart = 0, setIsResting = false;
+function activeExercise() { return exercises[currentExercise]; }
+function currentGoal() { return activeExercise()?.goal ?? GOAL_REPS; }
+function isResting() { return activeExercise()?.type === "rest" || setIsResting; }
 let elapsedTraining = 0; // 秒単位で経過時間を管理
 let excellentTimer = null;
 let trainingSessionId = 0, trainingPreparationId = 0, exercisePreparing = false;
@@ -54,7 +77,7 @@ function clearTimers() {
     countdownTimer = memoryTimerId = trainingTimer = null;
 }
 function resetMemory() {
-    phase = "before"; randomDigits = "";
+    phase = "before"; randomDigits = beforeMemoryDigits = "";
     beforeCorrectCount = afterCorrectCount = beforeScore = afterScore = improveScore = 0;
     memoryAnswerInput.value = "";
 }
@@ -63,7 +86,7 @@ function resetTraining() {
     running = false; gripCount = highKneeCount = squatCount = jumpCount = calorie = currentExercise = completedExercises = 0;
     remainExerciseTime = EXERCISE_TIME; squatState = "UP"; kneeState = false; jumpCooldown = 0; prevHipY = null;
     handLandmarks = []; handDetectionPending = false; lastHandDetectionAt = 0; handResultVersion = processedHandResultVersion = 0; gripStableFrames = 0;
-    elapsedTraining = 0;
+    elapsedTraining = 0; setCountStart = 0; setIsResting = false;
     // 終了ボタンを再有効化（前回の無効化が残らないように）
     try { if (endTrainingBtn) { endTrainingBtn.disabled = false; endTrainingBtn.style.opacity = "1"; } } catch (e) {}
     updateTrainingUI();
@@ -83,7 +106,11 @@ function countCorrect(answer, correct) {
     return Array.from({ length: MEMORY_LENGTH }, (_, index) => answer[index] === correct[index]).filter(Boolean).length;
 }
 
-function startApp() { clearTimers(); resetMemory(); resetTraining(); randomDigits = generateDigits(); startCountdown(); }
+function startApp() {
+    clearTimers(); resetMemory(); resetTraining();
+    sessionSettings = readSessionSettings(); exercises = createTrainingPlan(sessionSettings); TOTAL_EXERCISES = exercises.length;
+    beforeMemoryDigits = randomDigits = generateDigits(); startCountdown();
+}
 function startAppWrapped() { try { console.log('startApp invoked'); startApp(); } catch (e) { console.error('startApp error', e); throw e; } }
 function startCountdown() {
     showScreen(countdownScreen); let seconds = INTRO_COUNTDOWN; countdownNumber.textContent = seconds; window.MemoUI?.countdownTick(seconds);
@@ -215,11 +242,12 @@ function startTraining() {
 }
 async function startExercise() {
     const session = trainingSessionId; exercisePreparing = true;
-    const exercise = exercises[currentExercise]; remainExerciseTime = EXERCISE_TIME; exerciseName.textContent = exercise.name;
-    // 各セットの秒数は基本40秒。ただし合計でちょうどTOTAL_TRAINING_TIMEになるよう
-    // 最後のセットは余り秒数（LAST_EXERCISE_DURATION）があればそれを使う。
-    const lastDur = LAST_EXERCISE_DURATION || EXERCISE_TIME;
-    remainExerciseTime = (currentExercise < FULL_EXERCISES) ? EXERCISE_TIME : lastDur;
+    const exercise = activeExercise();
+    remainExerciseTime = EXERCISE_TIME; setIsResting = false;
+    setCountStart = totalCountFor(exercise.type);
+    // 判定途中の姿勢やクールダウンを次のセットへ持ち越さない。
+    squatState = "UP"; kneeState = false; jumpCooldown = 0; prevHipY = null;
+    exerciseName.textContent = exercise.name;
     window.MemoUI?.exerciseChanged(exercise);
     if (window.MemoUI) {
         const ready = await window.MemoUI.introduceExercise(exercise);
@@ -228,32 +256,39 @@ async function startExercise() {
     exercisePreparing = false;
     if (exercise.type === "grip") {
         gripPhase = "closed"; gripPhaseEndsAt = performance.now() + 5000;
-        gripPhaseValidated = false; gripStableFrames = 0; processedHandResultVersion = handResultVersion; updateGripInstruction();
+        gripPhaseValidated = false; gripStableFrames = 0; processedHandResultVersion = handResultVersion;
     }
-    updateExerciseGoal();
-    progressText.textContent = (completedExercises + 1) + " / " + TOTAL_EXERCISES + " セット";
-    if (exercise.type !== "grip") exerciseTarget.textContent = "残り " + remainExerciseTime + " 秒";
+    updateExerciseGoal(); updateExerciseInstruction();
+    window.MemoUI?.trainingTick();
     clearInterval(trainingTimer);
     trainingTimer = setInterval(() => {
-        // 1秒経過
-        remainExerciseTime -= 1;
-        elapsedTraining += 1; window.MemoUI?.trainingTick();
-        // グーパーは独自ロジックで更新
-        if (exercise.type === "grip") updateGripPhase(performance.now());
-        else exerciseTarget.textContent = "残り " + remainExerciseTime + " 秒";
-        // 総合時間に到達したら終了（できるだけ正確に）
-        if (elapsedTraining >= TOTAL_TRAINING_TIME) { finishTraining(); return; }
+        remainExerciseTime -= 1; elapsedTraining += 1;
+        if (exercise.type === "grip" && !isResting()) updateGripPhase(performance.now());
+        updateExerciseInstruction(); window.MemoUI?.trainingTick();
         if (remainExerciseTime <= 0) nextExercise();
     }, 1000);
 }
+function updateExerciseInstruction() {
+    if (isResting()) {
+        exerciseTarget.textContent = "ゆっくり呼吸して、ひと休み。";
+        exerciseTarget.classList.remove("openHand");
+    } else if (activeExercise().type === "grip") updateGripInstruction();
+    else {
+        exerciseTarget.textContent = "残り " + remainExerciseTime + " 秒";
+        exerciseTarget.classList.remove("openHand");
+    }
+}
 function nextExercise() {
-    clearInterval(trainingTimer); completedExercises += 1;
+    clearInterval(trainingTimer); trainingTimer = null; completedExercises += 1;
     if (completedExercises >= TOTAL_EXERCISES) { finishTraining(); return; }
-    currentExercise = (currentExercise + 1) % exercises.length; startExercise();
+    currentExercise += 1; startExercise();
 }
 function finishTraining() {
+    if (!running) return;
     trainingSessionId += 1; exercisePreparing = false;
-    clearTimers(); running = false; cancelAnimationFrame(animationId); stopCamera(); phase = "after"; startCountdown();
+    clearTimers(); running = false; cancelAnimationFrame(animationId); stopCamera();
+    randomDigits = sessionSettings.memoryMode === "random" ? generateDigits() : beforeMemoryDigits;
+    phase = "after"; startCountdown();
 }
 
 function showWarning(message) {
@@ -274,8 +309,16 @@ async function poseLoop(now = performance.now()) {
         return;
     }
     lastInferenceAt = now;
+    if (isResting()) {
+        drawCamera(); showWarning(""); updateFPS();
+        animationId = requestAnimationFrame(poseLoop); return;
+    }
+    const inferenceSession = trainingSessionId, inferenceSet = currentExercise;
     try {
-        const poses = await detector.estimatePoses(video); if (!running) return; drawCamera();
+        const poses = await detector.estimatePoses(video);
+        if (!running || inferenceSession !== trainingSessionId) return;
+        if (inferenceSet !== currentExercise || exercisePreparing) { animationId = requestAnimationFrame(poseLoop); return; }
+        drawCamera();
         if (exercises[currentExercise]?.type === "grip") requestHandDetection();
         if (!poses.length) showWarning("人物を検出できません");
         else if (exercises[currentExercise]?.type === "grip" && !isGripPoseVisible(poses[0].keypoints)) showWarning("両手を肩の前でカメラに向けてください");
@@ -295,6 +338,7 @@ function drawSkeleton(points) {
     });
 }
 function executeExercise(points) {
+    if (exercisePreparing || isResting()) return;
     switch (exercises[currentExercise].type) {
         case "grip": {
             // 同じHands結果を30fpsの姿勢ループで繰り返し数えない。
@@ -309,39 +353,31 @@ function executeExercise(points) {
     }
     updateExerciseGoal();
 }
-function currentExerciseCount() {
-    switch (exercises[currentExercise].type) {
-        case "grip":
-            return gripCount;
-
-        case "highKnee":
-            return highKneeCount;
-
-        case "squat":
-            return squatCount;
-
-        case "jump":
-            return jumpCount;
-
-        default:
-            return 0;
+function totalCountFor(type) {
+    switch (type) {
+        case "grip": return gripCount;
+        case "highKnee": return highKneeCount;
+        case "squat": return squatCount;
+        case "jump": return jumpCount;
+        default: return 0;
     }
 }
-
+function currentExerciseCount() { return Math.max(0, totalCountFor(activeExercise()?.type) - setCountStart); }
 function updateExerciseGoal() {
-    const count = currentExerciseCount();
-
-    const goalText = count >= GOAL_REPS
-            ? "クリア！ " + count + "回　そのまま続けてもよいです"
-            : "目標 " + GOAL_REPS + "回　現在 " + count + "回";
+    const exercise = activeExercise(), count = currentExerciseCount(), goal = currentGoal();
+    if (exercise.restAfterGoal && count >= goal && !setIsResting) {
+        setIsResting = true; showWarning(""); updateExerciseInstruction();
+        window.MemoUI?.restStarted();
+    }
+    let goalText;
+    if (exercise.type === "rest") goalText = "このセットは40秒間の休憩です";
+    else if (setIsResting) goalText = "目標 " + goal + "回クリア！ 残り時間は休憩です";
+    else if (count >= goal) goalText = "クリア！ " + count + "回　そのまま続けてもよいです";
+    else goalText = "目標 " + goal + "回　現在 " + count + "回";
     if (exerciseGoal.textContent !== goalText) exerciseGoal.textContent = goalText;
-
-    exerciseGoal.classList.toggle(
-        "isCleared",
-        count >= GOAL_REPS
-    );
+    exerciseGoal.classList.toggle("isCleared", exercise.type !== "rest" && count >= goal);
+    window.MemoUI?.updateLive();
 }
-    
 
 function getAngle(a, b, c) {
     const ab = { x: a.x - b.x, y: a.y - b.y }, cb = { x: c.x - b.x, y: c.y - b.y };
